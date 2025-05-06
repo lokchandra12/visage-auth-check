@@ -35,6 +35,12 @@ export const detectFace = async (videoElement: HTMLVideoElement): Promise<FaceDe
       const face = predictions[0];
       const box = face.box;
       
+      // Use a fallback pattern to handle different versions of the API
+      // Different models may return confidence under different property names
+      const confidenceScore = 
+        // @ts-ignore - Handle potential property differences in model versions
+        face.scoreConfidence || face.probability || face.score || 0;
+      
       return {
         box: {
           xMin: box.xMin,
@@ -43,7 +49,7 @@ export const detectFace = async (videoElement: HTMLVideoElement): Promise<FaceDe
           height: box.height
         },
         landmarks: face.keypoints?.map(kp => [kp.x, kp.y]) || [],
-        confidence: face.scoreConfidence || face.probability || 0
+        confidence: confidenceScore
       };
     }
   } catch (error) {
