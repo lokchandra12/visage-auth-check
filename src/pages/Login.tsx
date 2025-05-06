@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { toast } from '../components/ui/sonner';
+import { toast } from 'sonner';
 import WebcamCapture from '../components/WebcamCapture';
 import FaceImageGrid from '../components/FaceImageGrid';
 import ProgressBar from '../components/ProgressBar';
@@ -30,6 +29,9 @@ const Login: React.FC = () => {
   // Matching threshold (0.8 = 80%)
   const matchThreshold = 0.8;
   
+  // Add a new state for tracking if face detection is in progress
+  const [isFaceDetectionActive, setIsFaceDetectionActive] = useState<boolean>(false);
+
   // Initialize face detection model
   useEffect(() => {
     const loadModel = async () => {
@@ -66,7 +68,6 @@ const Login: React.FC = () => {
   const handleStartVerification = () => {
     if (validateUsername()) {
       setLoginStep('verification');
-      startCapturing();
     }
   };
 
@@ -139,6 +140,93 @@ const Login: React.FC = () => {
     setVerificationProgress(0);
   };
 
+  const handleManualFaceDetection = useCallback(async () => {
+    if (!modelLoaded || isVerifying) return;
+    
+    // Validate username
+    if (!validateUsername()) {
+      toast.error("Please enter a valid username first");
+      return;
+    }
+
+    try {
+      setIsVerifying(true);
+      setCapturedFaces([]);
+      
+      const webcamElement = document.querySelector('video');
+      const canvasElement = document.querySelector('canvas');
+      
+      if (!webcamElement || !canvasElement) {
+        toast.error("Camera not ready");
+        setIsVerifying(false);
+        return;
+      }
+
+      toast.info("Starting to capture 10 face images...");
+      setIsFaceDetectionActive(true);
+      
+      // Take 10 pictures automatically
+      for (let i = 0; i < requiredFaceCount; i++) {
+        if (i > 0) {
+          // Add a small delay between captures
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        
+        const faceImage = await captureImage(webcamElement, canvasElement);
+        if (faceImage) {
+          setCapturedFaces(prev => [...prev, faceImage]);
+          setVerificationProgress(Math.round(((i + 1) / requiredFaceCount) * 100));
+          toast.info(`Captured image ${i + 1} of ${requiredFaceCount}`);
+        } else {
+          toast.error(`Failed to capture image ${i + 1}. Retrying...`);
+          i--; // Retry this image
+        }
+      }
+      
+      toast.success("All face images captured!");
+      
+      // Verify the faces against registered faces
+      const verificationResults = [];
+      
+      for (let i = 0; i < capturedFaces.length; i++) {
+        const similarity = await compareWithRegisteredFaces(
+          capturedFaces[i],
+          registeredFaces
+        );
+        
+        verificationResults.push(similarity);
+        setVerificationProgress(Math.round(((i + 1) / capturedFaces.length) * 100));
+      }
+      
+      // Calculate average similarity score
+      const averageSimilarity = verificationResults.reduce((sum, score) => sum + score, 0) / verificationResults.length;
+      
+      console.log(`Face verification complete, Average similarity: ${averageSimilarity.toFixed(2)}`);
+      
+      if (averageSimilarity >= matchThreshold) {
+        toast.success('Face verification successful!');
+        // Set current user and navigate to dashboard
+        setCurrentUser(username);
+        navigate('/dashboard');
+      } else {
+        toast.error('Face verification failed. Please try again.');
+      }
+      
+    } catch (error) {
+      console.error('Face detection error:', error);
+      toast.error('Failed to detect face. Please try again.');
+    } finally {
+      setIsVerifying(false);
+      setIsFaceDetectionActive(false);
+    }
+  }, [username, modelLoaded, registeredFaces, isVerifying, requiredFaceCount, capturedFaces, navigate, matchThreshold, validateUsername]);
+
+  // Helper function to capture an image
+  const captureImage = async (videoElement: HTMLVideoElement, canvasElement: HTMLCanvasElement) => {
+    const { captureFace } = await import('../services/faceDetectionService');
+    return captureFace(videoElement, canvasElement);
+  };
+
   return (
     <div className="container mx-auto py-10 px-4 max-w-2xl">
       <Card className="w-full">
@@ -183,6 +271,16 @@ const Login: React.FC = () => {
                       Please ensure you're in a well-lit area.
                     </p>
                   </div>
+                  
+                  {/* New Detect Face button */}
+                  <Button 
+                    onClick={handleManualFaceDetection}
+                    disabled={!modelLoaded || !username.trim()}
+                    className="w-full"
+                    variant="secondary"
+                  >
+                    Detect Face
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -222,7 +320,7 @@ const Login: React.FC = () => {
                     <>
                       <WebcamCapture
                         onCapture={handleFaceCapture}
-                        isCaptureEnabled={isCapturing}
+                        isCaptureEnabled={isCapturing || isFaceDetectionActive}
                         capturingText={`Capturing image ${capturedFaces.length + 1} of ${requiredFaceCount}...`}
                       />
                       
