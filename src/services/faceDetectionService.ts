@@ -43,7 +43,7 @@ export const detectFace = async (videoElement: HTMLVideoElement): Promise<FaceDe
           height: box.height
         },
         landmarks: face.keypoints?.map(kp => [kp.x, kp.y]) || [],
-        confidence: face.score || 0
+        confidence: face.scoreConfidence || face.probability || 0
       };
     }
   } catch (error) {
