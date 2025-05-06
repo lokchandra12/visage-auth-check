@@ -65,10 +65,29 @@ export const captureFace = async (
 ): Promise<FaceImage | null> => {
   const face = await detectFace(videoElement);
   
-  if (!face || face.confidence < 0.8) {
-    return null;
+  if (!face) {
+    // For manual capture, proceed even without face detection
+    // Just capture the current frame
+    const context = canvasElement.getContext('2d');
+    if (!context) return null;
+    
+    // Match canvas size to video
+    canvasElement.width = videoElement.videoWidth;
+    canvasElement.height = videoElement.videoHeight;
+    
+    // Draw the entire frame to the canvas
+    context.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+    
+    // Convert canvas to data URL
+    const dataUrl = canvasElement.toDataURL('image/jpeg', 0.8);
+    
+    return {
+      data: dataUrl,
+      timestamp: Date.now()
+    };
   }
   
+  // If face is detected, use the original face capture logic
   const context = canvasElement.getContext('2d');
   if (!context) return null;
   

@@ -4,13 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { toast } from '../components/ui/sonner';
+import { toast } from 'sonner';
 import WebcamCapture from '../components/WebcamCapture';
 import FaceImageGrid from '../components/FaceImageGrid';
 import ProgressBar from '../components/ProgressBar';
 import { FaceImage } from '../models/faceTypes';
 import { saveUser, getUserByUsername } from '../services/authService';
-import { initFaceDetector } from '../services/faceDetectionService';
+import { initFaceDetector, captureFace } from '../services/faceDetectionService';
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -20,6 +20,7 @@ const Register: React.FC = () => {
   const [modelLoaded, setModelLoaded] = useState<boolean>(false);
   const [usernameError, setUsernameError] = useState<string>('');
   const [registrationStep, setRegistrationStep] = useState<'form' | 'capture'>('form');
+  const [isTakingPictures, setIsTakingPictures] = useState<boolean>(false);
 
   // Number of face images needed for registration
   const requiredFaceCount = 10;
@@ -58,30 +59,11 @@ const Register: React.FC = () => {
   const handleStartCapture = () => {
     if (validateUsername()) {
       setRegistrationStep('capture');
-      startCapturing();
     }
   };
 
-  const startCapturing = useCallback(() => {
-    setCapturedFaces([]);
-    setIsCapturing(true);
-  }, []);
-
-  const stopCapturing = useCallback(() => {
-    setIsCapturing(false);
-  }, []);
-
   const handleFaceCapture = useCallback((faceImage: FaceImage) => {
-    setCapturedFaces(prev => {
-      const newFaces = [...prev, faceImage];
-      
-      // Stop capturing when we have enough faces
-      if (newFaces.length >= requiredFaceCount) {
-        setIsCapturing(false);
-      }
-      
-      return newFaces;
-    });
+    setCapturedFaces(prev => [...prev, faceImage]);
   }, []);
 
   const handleSubmitRegistration = () => {
@@ -108,6 +90,54 @@ const Register: React.FC = () => {
   const resetRegistration = () => {
     setCapturedFaces([]);
     setRegistrationStep('form');
+  };
+
+  const handleManualCapture = async () => {
+    if (isTakingPictures) return;
+
+    setIsTakingPictures(true);
+    setCapturedFaces([]); // Reset previously captured faces
+    
+    // Take 10 pictures with a small delay between each
+    try {
+      const webcamElement = document.querySelector('video');
+      const canvasElement = document.querySelector('canvas');
+      
+      if (!webcamElement || !canvasElement) {
+        toast.error("Camera not ready");
+        setIsTakingPictures(false);
+        return;
+      }
+
+      toast.info("Starting to take 10 pictures...");
+      
+      for (let i = 0; i < requiredFaceCount; i++) {
+        if (i > 0) {
+          // Add a small delay between captures
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        
+        const faceImage = await captureFace(
+          webcamElement as HTMLVideoElement, 
+          canvasElement as HTMLCanvasElement
+        );
+        
+        if (faceImage) {
+          handleFaceCapture(faceImage);
+          toast.info(`Captured picture ${i + 1} of ${requiredFaceCount}`);
+        } else {
+          toast.error(`Failed to capture picture ${i + 1}. Please try again.`);
+          i--; // Try again for this picture
+        }
+      }
+      
+      toast.success("All pictures captured successfully!");
+    } catch (error) {
+      console.error("Error during manual capture:", error);
+      toast.error("Failed to capture images. Please try again.");
+    } finally {
+      setIsTakingPictures(false);
+    }
   };
 
   return (
@@ -160,22 +190,13 @@ const Register: React.FC = () => {
                 <div className="space-y-6">
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-medium">Face Capture</h3>
-                    {capturedFaces.length > 0 && capturedFaces.length < requiredFaceCount && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={startCapturing}
-                        disabled={isCapturing}
-                      >
-                        Continue Capturing
-                      </Button>
-                    )}
                   </div>
                   
                   <WebcamCapture
                     onCapture={handleFaceCapture}
                     isCaptureEnabled={isCapturing}
-                    capturingText={`Capturing image ${capturedFaces.length + 1} of ${requiredFaceCount}...`}
+                    capturingText="Capturing your face..."
+                    onManualCapture={handleManualCapture}
                   />
                   
                   <ProgressBar
@@ -222,7 +243,7 @@ const Register: React.FC = () => {
               </Button>
               <Button
                 onClick={handleSubmitRegistration}
-                disabled={capturedFaces.length < requiredFaceCount}
+                disabled={capturedFaces.length < requiredFaceCount || isTakingPictures}
               >
                 Complete Registration
               </Button>

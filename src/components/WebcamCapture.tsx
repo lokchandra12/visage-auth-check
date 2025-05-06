@@ -4,19 +4,22 @@ import Webcam from 'react-webcam';
 import { detectFace, captureFace } from '../services/faceDetectionService';
 import { FaceDetection, FaceImage } from '../models/faceTypes';
 import { Button } from './ui/button';
+import { Camera } from 'lucide-react';
 
 interface WebcamCaptureProps {
   onCapture: (faceImage: FaceImage) => void;
   isCaptureEnabled: boolean;
   capturingText?: string;
   readyText?: string;
+  onManualCapture?: () => void;
 }
 
 const WebcamCapture: React.FC<WebcamCaptureProps> = ({
   onCapture,
   isCaptureEnabled,
   capturingText = "Capturing Face...",
-  readyText = "Face Detected. Ready to capture."
+  readyText = "Face Detected. Ready to capture.",
+  onManualCapture
 }) => {
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -24,6 +27,7 @@ const WebcamCapture: React.FC<WebcamCaptureProps> = ({
   const [isDetecting, setIsDetecting] = useState<boolean>(true);
   const [cameraReady, setCameraReady] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("Starting camera...");
+  const [isCapturing, setIsCapturing] = useState<boolean>(false);
 
   const videoConstraints = {
     width: 640,
@@ -67,25 +71,32 @@ const WebcamCapture: React.FC<WebcamCaptureProps> = ({
     if (
       webcamRef.current && 
       webcamRef.current.video && 
-      canvasRef.current &&
-      faceBounds && 
-      faceBounds.confidence > 0.8
+      canvasRef.current
     ) {
       const video = webcamRef.current.video;
+      setIsCapturing(true);
       setMessage(capturingText);
       
       const faceImage = await captureFace(video, canvasRef.current);
       if (faceImage) {
         onCapture(faceImage);
       }
+      
+      setIsCapturing(false);
     }
-  }, [faceBounds, onCapture, capturingText]);
+  }, [onCapture, capturingText]);
 
   useEffect(() => {
     if (isCaptureEnabled && faceBounds && faceBounds.confidence > 0.8) {
       captureFaceImage();
     }
   }, [isCaptureEnabled, faceBounds, captureFaceImage]);
+
+  const handleManualCapture = () => {
+    if (onManualCapture) {
+      onManualCapture();
+    }
+  };
 
   return (
     <div className="relative flex flex-col items-center">
@@ -102,7 +113,7 @@ const WebcamCapture: React.FC<WebcamCaptureProps> = ({
         
         {faceBounds && (
           <div 
-            className="face-overlay"
+            className="face-overlay absolute border-2 border-green-500"
             style={{
               left: `${(faceBounds.box.xMin / 640) * 100}%`,
               top: `${(faceBounds.box.yMin / 480) * 100}%`,
@@ -111,17 +122,23 @@ const WebcamCapture: React.FC<WebcamCaptureProps> = ({
             }}
           />
         )}
-        
-        <canvas 
-          ref={canvasRef} 
-          className="absolute top-0 left-0 w-full h-full opacity-0"
-        />
       </div>
       
-      <div className="mt-4 text-center">
+      <div className="mt-4 text-center w-full">
         <p className={`text-sm ${faceBounds ? 'text-green-600' : 'text-amber-600'}`}>
           {message}
         </p>
+        
+        {onManualCapture && (
+          <Button 
+            onClick={handleManualCapture} 
+            className="mt-4" 
+            disabled={isCapturing}
+          >
+            <Camera className="mr-2" />
+            Take 10 Pictures
+          </Button>
+        )}
       </div>
       
       <canvas 
